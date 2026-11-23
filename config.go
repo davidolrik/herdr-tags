@@ -1,0 +1,140 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"regexp"
+	"strings"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsimple"
+)
+
+// DefaultConfigHCL is the documented config file written by `init-config`.
+// Its tags are also what the plugin uses while no config file exists, so the
+// two must agree: a test parses this text and compares it to the defaults.
+const DefaultConfigHCL = `# herdr-tags configuration
+#
+# One block per tag, in the order the picker lists them and the sidebar
+# shows them. Add, remove, or recolor freely; the plugin reads this file on
+# every invocation, so changes apply the next time you open the picker.
+#
+# Names become herdr sidebar tokens ("in-review" is shown as "#in-review"
+# through the $tag_in-review token), so they may use ASCII letters, digits,
+# underscores and hyphens only, up to 28 characters.
+#
+# Colors are strict #RGB or #RRGGBB hex, the only form herdr's sidebar
+# accepts. After editing, regenerate the sidebar rows for config.toml:
+#
+#   herdr plugin action invoke davidolrik.tags.sidebar-rows
+#
+# The defaults are Catppuccin Mocha accents.
+
+tag "in-review" { color = "#f9e2af" }
+tag "blocked"   { color = "#f38ba8" }
+tag "wip"       { color = "#89b4fa" }
+tag "ready"     { color = "#a6e3a1" }
+tag "on-hold"   { color = "#9399b2" }
+`
+
+// Tag is one configured tag: its name, and the color it is drawn in.
+type Tag struct {
+	Name  string
+	Color string
+}
+
+// Config is the fully-resolved plugin configuration.
+type Config struct {
+	Tags []Tag
+}
+
+type rawConfig struct {
+	Tags []rawTag `hcl:"tag,block"`
+}
+
+type rawTag struct {
+	Name  string `hcl:"name,label"`
+	Color string `hcl:"color"`
+}
+
+// Token names are limited to 32 characters of ASCII letters, digits,
+// underscores and hyphens by herdr; the "tag_" prefix takes four of them.
+const tokenPrefix = "tag_"
+
+var (
+	tagNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,28}$`)
+	colorRe   = regexp.MustCompile(`^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
+)
+
+// TokenName is the herdr workspace metadata token that carries a tag.
+func TokenName(tag string) string {
+	return tokenPrefix + tag
+}
+
+// TagLabel is the text shown in the sidebar for a set tag.
+func TagLabel(tag string) string {
+	return "#" + tag
+}
+
+// LoadConfig reads and validates the HCL config at path. A missing file
+// yields the default tag set; anything else that goes wrong is an error, so
+// a typo never silently empties the picker.
+func LoadConfig(path string) (*Config, error) {
+	src, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		src = []byte(DefaultConfigHCL)
+	} else if err != nil {
+		return nil, err
+	}
+	return parseConfig(path, src)
+}
+
+func parseConfig(filename string, src []byte) (*Config, error) {
+	var raw rawConfig
+	if err := hclsimple.Decode(filename, src, nil, &raw); err != nil {
+		var diags hcl.Diagnostics
+		if errors.As(err, &diags) {
+			return nil, fmt.Errorf("%s: %s", filename, strings.Join(diagMessages(diags), "; "))
+		}
+		return nil, err
+	}
+	if len(raw.Tags) == 0 {
+		return nil, fmt.Errorf("%s: no tag blocks defined", filename)
+	}
+
+	cfg := &Config{}
+	seen := map[string]bool{}
+	for _, t := range raw.Tags {
+		if !tagNameRe.MatchString(t.Name) {
+			return nil, fmt.Errorf("%s: tag %q: name must be 1-28 ASCII letters, digits, underscores or hyphens", filename, t.Name)
+		}
+		if !colorRe.MatchString(t.Color) {
+			return nil, fmt.Errorf("%s: tag %q: color %q must be #RGB or #RRGGBB", filename, t.Name, t.Color)
+		}
+		if seen[t.Name] {
+			return nil, fmt.Errorf("%s: tag %q defined twice", filename, t.Name)
+		}
+		seen[t.Name] = true
+		cfg.Tags = append(cfg.Tags, Tag{Name: t.Name, Color: t.Color})
+	}
+	return cfg, nil
+}
+
+func diagMessages(diags hcl.Diagnostics) []string {
+	var msgs []string
+	for _, d := range diags {
+		if d.Severity != hcl.DiagError {
+			continue
+		}
+		msg := d.Summary
+		if d.Detail != "" {
+			msg += ": " + d.Detail
+		}
+		if d.Subject != nil {
+			msg = fmt.Sprintf("%d:%d: %s", d.Subject.Start.Line, d.Subject.Start.Column, msg)
+		}
+		msgs = append(msgs, msg)
+	}
+	return msgs
+}

@@ -1,0 +1,55 @@
+id = "davidolrik.tags"
+name = "Herdr Tags"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Tag workspaces (#in-review, #blocked, ...) from a popup picker; tags show in the sidebar below the branch, each in its own color."
+platforms = ["linux", "macos"]
+
+# Downloads the prebuilt, checksum-verified release binary for this version
+# and platform (needs only sh + curl); falls back to `go build` for dev
+# checkouts and platforms without a release asset.
+[[build]]
+command = ["sh", "scripts/fetch-or-build.sh"]
+platforms = ["linux", "macos"]
+
+# Herdr does not keep workspace tokens across a server restart: re-report
+# every stored selection once the restored session is up.
+[[startup]]
+command = ["./bin/herdr-tags", "startup"]
+
+# Bind this to a key in herdr's config.toml:
+#   [[keys.command]]
+#   key = "prefix+#"
+#   type = "plugin_action"
+#   command = "davidolrik.tags.pick"
+[[actions]]
+id = "pick"
+title = "Tags: edit the current workspace's tags"
+contexts = ["workspace"]
+command = ["./bin/herdr-tags", "open"]
+
+# Write the fully-documented default config into the plugin's config dir
+# (never overwrites an existing config.hcl):
+#   herdr plugin action invoke davidolrik.tags.init-config
+[[actions]]
+id = "init-config"
+title = "Tags: create default config file"
+contexts = ["global"]
+command = ["./bin/herdr-tags", "init-config"]
+
+# Render the [ui.sidebar.spaces] rows for herdr's config.toml from the tag
+# colors in config.hcl, into <config-dir>/sidebar-rows.toml:
+#   herdr plugin action invoke davidolrik.tags.sidebar-rows
+[[actions]]
+id = "sidebar-rows"
+title = "Tags: generate sidebar rows for config.toml"
+contexts = ["global"]
+command = ["./bin/herdr-tags", "sidebar-rows"]
+
+# The picker: a session-modal popup over the current layout. It receives
+# every key (including Escape) and closes when the picker exits.
+[[panes]]
+id = "picker"
+title = "Tags"
+placement = "popup"
+command = ["./bin/herdr-tags", "pick"]
