@@ -21,8 +21,9 @@ const DefaultConfigHCL = `# herdr-tags configuration
 # every invocation, so changes apply the next time you open the picker.
 #
 # Names become herdr sidebar tokens ("in-review" is shown as "#in-review"
-# through the $tag_in-review token), so they may use ASCII letters, digits,
-# underscores and hyphens only, up to 28 characters.
+# through the $t1_in-review token, $t2_in-review on the second line, and so
+# on), so they may use ASCII letters, digits, underscores and hyphens only,
+# up to 28 characters.
 #
 # Colors are strict #RGB or #RRGGBB hex, the only form herdr's sidebar
 # accepts. After editing, regenerate the sidebar rows for config.toml:
@@ -30,6 +31,14 @@ const DefaultConfigHCL = `# herdr-tags configuration
 #   herdr plugin action invoke davidolrik.tags.sidebar-rows
 #
 # The defaults are Catppuccin Mocha accents.
+#
+# Tags that do not fit on one sidebar line wrap onto the next. The plugin
+# reads the sidebar width from the herdr client on this machine; a client
+# attached with "herdr --remote" keeps its width where the plugin cannot see
+# it. If such a client has a narrower sidebar, give its width here and tags
+# are wrapped to fit the narrower of the two:
+#
+# narrowest_sidebar_width = 24
 
 tag "in-review" { color = "#f9e2af" }
 tag "blocked"   { color = "#f38ba8" }
@@ -47,10 +56,14 @@ type Tag struct {
 // Config is the fully-resolved plugin configuration.
 type Config struct {
 	Tags []Tag
+	// NarrowestSidebarWidth caps the sidebar width tags are wrapped for,
+	// covering clients whose width the plugin cannot read. Zero means unset.
+	NarrowestSidebarWidth int
 }
 
 type rawConfig struct {
-	Tags []rawTag `hcl:"tag,block"`
+	NarrowestSidebarWidth *int     `hcl:"narrowest_sidebar_width,optional"`
+	Tags                  []rawTag `hcl:"tag,block"`
 }
 
 type rawTag struct {
@@ -59,17 +72,19 @@ type rawTag struct {
 }
 
 // Token names are limited to 32 characters of ASCII letters, digits,
-// underscores and hyphens by herdr; the "tag_" prefix takes four of them.
-const tokenPrefix = "tag_"
+// underscores and hyphens by herdr; the line prefix ("t1_" to "t14_") takes
+// up to four of them.
 
 var (
 	tagNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,28}$`)
 	colorRe   = regexp.MustCompile(`^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
 )
 
-// TokenName is the herdr workspace metadata token that carries a tag.
-func TokenName(tag string) string {
-	return tokenPrefix + tag
+// TokenName is the herdr workspace metadata token that carries a tag on one
+// sidebar line, counted from 1. Herdr lays tokens out in fixed rows, so a tag
+// has one token per line it may wrap onto and only that line's token is set.
+func TokenName(line int, tag string) string {
+	return fmt.Sprintf("t%d_%s", line, tag)
 }
 
 // TagLabel is the text shown in the sidebar for a set tag.
@@ -104,6 +119,12 @@ func parseConfig(filename string, src []byte) (*Config, error) {
 	}
 
 	cfg := &Config{}
+	if raw.NarrowestSidebarWidth != nil {
+		if *raw.NarrowestSidebarWidth < 1 {
+			return nil, fmt.Errorf("%s: narrowest_sidebar_width must be a positive number of columns", filename)
+		}
+		cfg.NarrowestSidebarWidth = *raw.NarrowestSidebarWidth
+	}
 	seen := map[string]bool{}
 	for _, t := range raw.Tags {
 		if !tagNameRe.MatchString(t.Name) {

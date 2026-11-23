@@ -35,6 +35,27 @@ tag "in-review" { color = "#fab" }
 	}
 }
 
+func TestLoadConfigNarrowestSidebarWidth(t *testing.T) {
+	cfg, err := LoadConfig(writeConfig(t, `
+narrowest_sidebar_width = 24
+tag "wip" { color = "#fff" }
+`))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.NarrowestSidebarWidth != 24 {
+		t.Errorf("NarrowestSidebarWidth = %d, want 24", cfg.NarrowestSidebarWidth)
+	}
+
+	cfg, err = LoadConfig(writeConfig(t, `tag "wip" { color = "#fff" }`))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.NarrowestSidebarWidth != 0 {
+		t.Errorf("NarrowestSidebarWidth = %d, want 0 when unset", cfg.NarrowestSidebarWidth)
+	}
+}
+
 func TestLoadConfigMissingFileUsesDefaults(t *testing.T) {
 	cfg, err := LoadConfig(filepath.Join(t.TempDir(), "config.hcl"))
 	if err != nil {
@@ -76,6 +97,8 @@ func TestLoadConfigRejectsBadInput(t *testing.T) {
 		"unknown attr":   `tag "wip" { color = "#fff" icon = "x" }`,
 		"missing color":  `tag "wip" { }`,
 		"syntax error":   `tag "wip" {`,
+		"zero width":     "narrowest_sidebar_width = 0\ntag \"wip\" { color = \"#fff\" }",
+		"negative width": "narrowest_sidebar_width = -4\ntag \"wip\" { color = \"#fff\" }",
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -87,7 +110,7 @@ func TestLoadConfigRejectsBadInput(t *testing.T) {
 }
 
 func TestTagToken(t *testing.T) {
-	if got := TokenName("in-review"); got != "tag_in-review" {
+	if got := TokenName(2, "in-review"); got != "t2_in-review" {
 		t.Errorf("TokenName = %q", got)
 	}
 	if got := TagLabel("in-review"); got != "#in-review" {

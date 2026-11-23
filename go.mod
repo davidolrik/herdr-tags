@@ -3,6 +3,7 @@ module github.com/davidolrik/herdr-tags
 go 1.27.4
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/hashicorp/hcl/v2 v2.25.0
 	golang.org/x/term v0.37.0
 )

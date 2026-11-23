@@ -16,6 +16,8 @@ each tag in its own color:
   enter saves, escape cancels. The list previews every tag in its color.
 - **Your tags, your colors** — tags and their colors live in a small HCL
   config; add as many as you like (herdr allows 32 tokens per workspace).
+- **Wraps instead of truncating** — tags that do not fit the sidebar's width
+  continue on the next line.
 - **Survives restarts** — herdr forgets workspace tokens when its server
   restarts; the plugin stores the selection per session and re-reports it
   from its startup hook. Closed workspaces are forgotten.
@@ -60,6 +62,15 @@ Names may use ASCII letters, digits, underscores and hyphens (up to 28
 characters); colors are `#RGB` or `#RRGGBB`. Without a config file the
 defaults above plus `ready` and `on-hold` apply.
 
+Tags wrap to the sidebar width of the herdr client on the same machine as
+the server. A client attached with `herdr --remote` keeps its width on its
+own machine, out of the plugin's sight; if its sidebar is narrower, state
+that width and tags wrap to fit the narrower of the two:
+
+```hcl
+narrowest_sidebar_width = 24
+```
+
 ### 2. Sidebar rows
 
 Herdr colors sidebar tokens only from its own `config.toml`, so the colors
@@ -80,15 +91,29 @@ rows = [
   ["state_icon", "workspace"],
   ["branch", "git_status"],
   [
-    { token = "$tag_in-review", fg = "#f9e2af" },
-    { token = "$tag_blocked", fg = "#f38ba8" },
-    { token = "$tag_wip", fg = "#89b4fa" },
+    { token = "$t1_in-review", fg = "#f9e2af" },
+    { token = "$t1_blocked", fg = "#f38ba8" },
+    { token = "$t1_wip", fg = "#89b4fa" },
+  ],
+  [
+    { token = "$t2_in-review", fg = "#f9e2af" },
+    { token = "$t2_blocked", fg = "#f38ba8" },
+    { token = "$t2_wip", fg = "#89b4fa" },
+  ],
+  [
+    { token = "$t3_in-review", fg = "#f9e2af" },
+    { token = "$t3_blocked", fg = "#f38ba8" },
+    { token = "$t3_wip", fg = "#89b4fa" },
   ],
 ]
 ```
 
-Each tag is one workspace token (`$tag_<name>`, value `#<name>`). A row whose
-tokens are all unset disappears, so untagged workspaces stay compact.
+Herdr lays tokens out in fixed rows and truncates a row that is too long, so
+there is one row per line the tags may wrap onto (one per tag, at most 14),
+and each tag has a token per line (`$t<line>_<name>`, value `#<name>`). The
+plugin sets only the token on the line where the tag fits. A row whose
+tokens are all unset disappears, so a workspace takes no more lines than its
+tags need.
 
 ### 3. Key
 
@@ -120,6 +145,13 @@ workspace's tokens over herdr's socket API (`workspace.report_metadata`,
 setting selected tags and clearing the rest) and writes the selection to
 `tags.<session>.json` in the plugin's state dir. The `[[startup]]` hook reads
 that file, drops workspaces herdr no longer lists, and re-reports the rest.
+
+Herdr does not expose its sidebar width, so the plugin derives it the way the
+herdr client does: the width the sidebar was dragged to, saved in the client's
+preferences file under herdr's state dir, or else `ui.sidebar_width` from
+`config.toml`, clamped to `sidebar_min_width`/`sidebar_max_width`. Tags are
+wrapped when they are reported, so after resizing the sidebar, save the
+picker once more (or restart herdr) to wrap them again.
 
 ## Development
 

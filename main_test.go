@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +16,48 @@ func TestPruneStateDropsClosedWorkspaces(t *testing.T) {
 	want := State{"w1": {"wip"}, "w3": {"ready"}}
 	if !reflect.DeepEqual(pruned, want) {
 		t.Errorf("pruneState = %v, want %v", pruned, want)
+	}
+}
+
+func TestWorkspaceIndentedForLinkedWorktrees(t *testing.T) {
+	cases := map[string]bool{
+		`{"workspace_id":"w1"}`: false,
+		`{"workspace_id":"w2","worktree":{"is_linked_worktree":false}}`: false,
+		`{"workspace_id":"w3","worktree":{"is_linked_worktree":true}}`:  true,
+	}
+	for record, want := range cases {
+		var ws workspace
+		if err := json.Unmarshal([]byte(record), &ws); err != nil {
+			t.Fatal(err)
+		}
+		if got := ws.indented(); got != want {
+			t.Errorf("%s: indented = %v, want %v", record, got, want)
+		}
+	}
+}
+
+func TestHerdrPathsFollowHerdrsLookup(t *testing.T) {
+	t.Setenv("HOME", "/home/me")
+	t.Setenv("HERDR_CONFIG_PATH", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("XDG_STATE_HOME", "")
+	if got := herdrConfigPath(); got != "/home/me/.config/herdr/config.toml" {
+		t.Errorf("herdrConfigPath = %q", got)
+	}
+	if got := herdrStateDir(); got != "/home/me/.local/state/herdr" {
+		t.Errorf("herdrStateDir = %q", got)
+	}
+	t.Setenv("XDG_CONFIG_HOME", "/xdg/config")
+	t.Setenv("XDG_STATE_HOME", "/xdg/state")
+	if got := herdrConfigPath(); got != "/xdg/config/herdr/config.toml" {
+		t.Errorf("herdrConfigPath = %q", got)
+	}
+	if got := herdrStateDir(); got != "/xdg/state/herdr" {
+		t.Errorf("herdrStateDir = %q", got)
+	}
+	t.Setenv("HERDR_CONFIG_PATH", "/elsewhere/herdr.toml")
+	if got := herdrConfigPath(); got != "/elsewhere/herdr.toml" {
+		t.Errorf("herdrConfigPath = %q", got)
 	}
 }
 

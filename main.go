@@ -57,6 +57,30 @@ func statePath() string {
 	return StatePath(pluginStateDir(), envOr("HERDR_SESSION", "default"))
 }
 
+// herdrConfigPath and herdrStateDir locate herdr's own files the way herdr
+// does.
+func herdrConfigPath() string {
+	if path := os.Getenv("HERDR_CONFIG_PATH"); path != "" {
+		return path
+	}
+	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+		return filepath.Join(dir, "herdr", "config.toml")
+	}
+	return filepath.Join(defaultDir(".config", "herdr"), "config.toml")
+}
+
+func herdrStateDir() string {
+	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
+		return filepath.Join(dir, "herdr")
+	}
+	return defaultDir(".local/state", "herdr")
+}
+
+// sidebarWidth is the sidebar width of the herdr client on this machine.
+func sidebarWidth() int {
+	return SidebarWidth(herdrConfigPath(), ClientPreferencesPath(herdrStateDir(), sessionSocketPath()))
+}
+
 // workspaceIDFromEnv is the workspace an invocation is about: the popup
 // hand-off, then herdr's own variable, then the action context JSON.
 func workspaceIDFromEnv() string {
@@ -79,6 +103,16 @@ func workspaceIDFromEnv() string {
 type workspace struct {
 	WorkspaceID string `json:"workspace_id"`
 	Label       string `json:"label"`
+	Worktree    *struct {
+		IsLinkedWorktree bool `json:"is_linked_worktree"`
+	} `json:"worktree"`
+}
+
+// indented reports whether the sidebar may draw the workspace as a child of
+// its repository. Herdr only does so while the repository's own workspace is
+// open too; assuming it always is keeps the tags readable either way.
+func (ws workspace) indented() bool {
+	return ws.Worktree != nil && ws.Worktree.IsLinkedWorktree
 }
 
 func listWorkspaces(sock string) ([]workspace, error) {
@@ -145,9 +179,14 @@ func runStartup() error {
 		live = append(live, ws.WorkspaceID)
 	}
 	st = pruneState(st, live)
+	width := sidebarWidth()
 	var errs []error
-	for id, tags := range st {
-		if err := ReportTags(sock, id, cfg, tags); err != nil {
+	for _, ws := range workspaces {
+		tags, ok := st[ws.WorkspaceID]
+		if !ok {
+			continue
+		}
+		if err := ReportTags(sock, ws.WorkspaceID, cfg, tags, TagColumns(cfg, width, ws.indented())); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -235,7 +274,7 @@ func runPick() error {
 	}
 
 	st[ws] = picker.SelectedNames()
-	if err := ReportTags(sock, ws, cfg, st[ws]); err != nil {
+	if err := ReportTags(sock, ws, cfg, st[ws], TagColumns(cfg, sidebarWidth(), info.indented())); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(pluginStateDir(), 0o755); err != nil {
