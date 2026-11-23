@@ -2,18 +2,23 @@
 
 Tag a workspace with where it stands — `#in-review`, `#blocked`, `#wip` — and
 see it in [herdr](https://herdr.dev)'s sidebar, right below the branch name,
-each tag in its own color:
+each tag in its own color, with a short note underneath if you want one:
 
 ```text
 ◐ herdr-titles
   󰙅 fix-login ↑1
   #in-review #blocked
+  Waiting on Søren, second
+  pass of the review
 ```
 
 ## Features
 
 - **A popup picker on a key** — arrows (or `j`/`k`) move, space toggles,
   enter saves, escape cancels. The list previews every tag in its color.
+- **A note per workspace** — a free-text field below the tags in the picker
+  (tab jumps to it); the sidebar shows it under the tags, wrapped onto at
+  most two lines.
 - **Your tags, your colors** — tags and their colors live in a small HCL
   config; add as many as you like (herdr allows 32 tokens per workspace).
 - **Wraps instead of truncating** — tags that do not fit the sidebar's width
@@ -71,6 +76,22 @@ that width and tags wrap to fit the narrower of the two:
 narrowest_sidebar_width = 24
 ```
 
+The note wraps at word boundaries onto at most `note_lines` sidebar lines; a
+longer note ends in `…`. Both settings are optional, and `note_lines = 0`
+turns the note off, field and all:
+
+```hcl
+note_lines = 2
+note_color = "#9399b2"
+```
+
+In the picker, move down past the last tag or press tab to reach the note
+field, then type. Left and right move the cursor, home and end (or `ctrl+a`
+and `ctrl+e`) jump to either end, and backspace and delete erase. `ctrl+u`
+erases everything before the cursor, which clears the whole note when the
+cursor is at the end, where it starts; `ctrl+k` erases everything after it.
+A note holds up to 200 characters.
+
 ### 2. Sidebar rows
 
 Herdr colors sidebar tokens only from its own `config.toml`, so the colors
@@ -83,7 +104,8 @@ cat "$(herdr plugin config-dir davidolrik.tags)/sidebar-rows.toml"
 
 Paste it into `~/.config/herdr/config.toml` (replacing any existing
 `[ui.sidebar.spaces]` section) and run `herdr server reload-config`. Rerun
-both steps whenever you add or recolor a tag.
+both steps whenever you add or recolor a tag, or change `note_lines` or
+`note_color`.
 
 ```toml
 [ui.sidebar.spaces]
@@ -105,15 +127,18 @@ rows = [
     { token = "$t3_blocked", fg = "#f38ba8" },
     { token = "$t3_wip", fg = "#89b4fa" },
   ],
+  [{ token = "$note1", fg = "#9399b2" }],
+  [{ token = "$note2", fg = "#9399b2" }],
 ]
 ```
 
 Herdr lays tokens out in fixed rows and truncates a row that is too long, so
-there is one row per line the tags may wrap onto (one per tag, at most 14),
-and each tag has a token per line (`$t<line>_<name>`, value `#<name>`). The
-plugin sets only the token on the line where the tag fits. A row whose
-tokens are all unset disappears, so a workspace takes no more lines than its
-tags need.
+there is one row per line the tags may wrap onto (one per tag, at most 14
+less the note's lines), and each tag has a token per line
+(`$t<line>_<name>`, value `#<name>`). The plugin sets only the token on the
+line where the tag fits. The note follows with one row and one token
+(`$note<line>`) per line. A row whose tokens are all unset disappears, so a
+workspace takes no more lines than its tags and note need.
 
 ### 3. Key
 
@@ -142,16 +167,17 @@ The `pick` action opens a manifest `[[panes]]` entrypoint as a session-modal
 popup, sized to the tag list, handing it the workspace ID through its
 environment. The popup runs the picker in raw mode; on enter it patches the
 workspace's tokens over herdr's socket API (`workspace.report_metadata`,
-setting selected tags and clearing the rest) and writes the selection to
-`tags.<session>.json` in the plugin's state dir. The `[[startup]]` hook reads
+setting selected tags and the note's lines and clearing the rest) and writes
+the selection and the note to `tags.<session>.json` in the plugin's state
+dir. The `[[startup]]` hook reads
 that file, drops workspaces herdr no longer lists, and re-reports the rest.
 
 Herdr does not expose its sidebar width, so the plugin derives it the way the
 herdr client does: the width the sidebar was dragged to, saved in the client's
 preferences file under herdr's state dir, or else `ui.sidebar_width` from
-`config.toml`, clamped to `sidebar_min_width`/`sidebar_max_width`. Tags are
-wrapped when they are reported, so after resizing the sidebar, save the
-picker once more (or restart herdr) to wrap them again.
+`config.toml`, clamped to `sidebar_min_width`/`sidebar_max_width`. Tags and
+the note are wrapped when they are reported, so after resizing the sidebar,
+save the picker once more (or restart herdr) to wrap them again.
 
 ## Development
 

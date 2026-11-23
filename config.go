@@ -39,6 +39,14 @@ const DefaultConfigHCL = `# herdr-tags configuration
 # are wrapped to fit the narrower of the two:
 #
 # narrowest_sidebar_width = 24
+#
+# A workspace can also carry a free-text note, typed into the field below
+# the tags in the picker and shown below the tags in the sidebar. It wraps
+# onto at most note_lines sidebar lines and anything longer ends in "…";
+# 0 turns the note off. Regenerate the sidebar rows after changing either:
+#
+# note_lines = 2
+# note_color = "#9399b2"
 
 tag "in-review" { color = "#f9e2af" }
 tag "blocked"   { color = "#f38ba8" }
@@ -59,10 +67,23 @@ type Config struct {
 	// NarrowestSidebarWidth caps the sidebar width tags are wrapped for,
 	// covering clients whose width the plugin cannot read. Zero means unset.
 	NarrowestSidebarWidth int
+	// NoteLines is how many sidebar lines a workspace's note may fill; zero
+	// turns the note off.
+	NoteLines int
+	// NoteColor is the color the note is drawn in.
+	NoteColor string
 }
+
+// What the note gets when the config does not say.
+const (
+	defaultNoteLines = 2
+	defaultNoteColor = "#9399b2"
+)
 
 type rawConfig struct {
 	NarrowestSidebarWidth *int     `hcl:"narrowest_sidebar_width,optional"`
+	NoteLines             *int     `hcl:"note_lines,optional"`
+	NoteColor             *string  `hcl:"note_color,optional"`
 	Tags                  []rawTag `hcl:"tag,block"`
 }
 
@@ -118,7 +139,20 @@ func parseConfig(filename string, src []byte) (*Config, error) {
 		return nil, fmt.Errorf("%s: no tag blocks defined", filename)
 	}
 
-	cfg := &Config{}
+	cfg := &Config{NoteLines: defaultNoteLines, NoteColor: defaultNoteColor}
+	if raw.NoteLines != nil {
+		// The tags keep at least one of the sidebar rows.
+		if *raw.NoteLines < 0 || *raw.NoteLines >= maxSidebarRows {
+			return nil, fmt.Errorf("%s: note_lines must be between 0 and %d", filename, maxSidebarRows-1)
+		}
+		cfg.NoteLines = *raw.NoteLines
+	}
+	if raw.NoteColor != nil {
+		if !colorRe.MatchString(*raw.NoteColor) {
+			return nil, fmt.Errorf("%s: note_color %q must be #RGB or #RRGGBB", filename, *raw.NoteColor)
+		}
+		cfg.NoteColor = *raw.NoteColor
+	}
 	if raw.NarrowestSidebarWidth != nil {
 		if *raw.NarrowestSidebarWidth < 1 {
 			return nil, fmt.Errorf("%s: narrowest_sidebar_width must be a positive number of columns", filename)

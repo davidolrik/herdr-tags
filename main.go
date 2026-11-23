@@ -1,7 +1,8 @@
 // herdr-tags lets a workspace carry tags ("#in-review", "#blocked", ...)
-// shown in herdr's sidebar below the branch name. Each tag is one workspace
-// metadata token; the selection is edited in a popup picker and persisted
-// per session so a startup hook can re-report it after a server restart.
+// and a free-text note, shown in herdr's sidebar below the branch name. Each
+// tag is one workspace metadata token, and so is each line of the note; both
+// are edited in a popup picker and persisted per session so a startup hook
+// can re-report them after a server restart.
 package main
 
 import (
@@ -150,16 +151,25 @@ func pruneState(st State, live []string) State {
 		alive[id] = true
 	}
 	pruned := State{}
-	for id, tags := range st {
+	for id, entry := range st {
 		if alive[id] {
-			pruned[id] = tags
+			pruned[id] = entry
 		}
 	}
 	return pruned
 }
 
-// runStartup re-reports every stored selection after a server restart,
-// forgetting workspaces that no longer exist.
+// reportEntry pushes a workspace's tags and note to herdr, both wrapped to
+// columns cells per sidebar line.
+func reportEntry(sock, workspaceID string, cfg *Config, entry Entry, columns int) error {
+	if err := ReportTags(sock, workspaceID, cfg, entry.Tags, columns); err != nil {
+		return err
+	}
+	return ReportNote(sock, workspaceID, cfg, entry.Note, columns)
+}
+
+// runStartup re-reports every stored selection and note after a server
+// restart, forgetting workspaces that no longer exist.
 func runStartup() error {
 	cfg, err := LoadConfig(configPath())
 	if err != nil {
@@ -182,11 +192,11 @@ func runStartup() error {
 	width := sidebarWidth()
 	var errs []error
 	for _, ws := range workspaces {
-		tags, ok := st[ws.WorkspaceID]
+		entry, ok := st[ws.WorkspaceID]
 		if !ok {
 			continue
 		}
-		if err := ReportTags(sock, ws.WorkspaceID, cfg, tags, TagColumns(cfg, width, ws.indented())); err != nil {
+		if err := reportEntry(sock, ws.WorkspaceID, cfg, entry, TagColumns(cfg, width, ws.indented())); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -203,15 +213,25 @@ func runStartup() error {
 // blank, hints, plus the popup's own border.
 const popupChromeRows = 6
 
-// popupSize fits the popup to the tag list.
+// noteFieldRows is what the note field adds to the popup: a blank line and
+// the field itself.
+const noteFieldRows = 2
+
+// popupSize fits the popup to the tag list and, when the note is on, the
+// note field with its cursor.
 func popupSize(cfg *Config) (width, height int) {
-	width = utf8.RuneCountInString("↑↓ move · space toggle · enter save · esc cancel") + 4
+	width = utf8.RuneCountInString(listHints) + 4
 	for _, tag := range cfg.Tags {
 		if w := len("> [x] ") + len(TagLabel(tag.Name)) + 4; w > width {
 			width = w
 		}
 	}
-	return width, len(cfg.Tags) + popupChromeRows
+	height = len(cfg.Tags) + popupChromeRows
+	if cfg.NoteLines > 0 {
+		width = max(width, len("> Note: ")+noteFieldWidth+1+4, utf8.RuneCountInString(noteHints)+4)
+		height += noteFieldRows
+	}
+	return width, height
 }
 
 // runOpen is the action behind the keybinding: open the picker popup for the
@@ -238,8 +258,8 @@ func runOpen() error {
 	return err
 }
 
-// runPick is the popup process: edit the workspace's tags interactively,
-// then report and persist them when the picker saved.
+// runPick is the popup process: edit the workspace's tags and note
+// interactively, then report and persist them when the picker saved.
 func runPick() error {
 	cfg, err := LoadConfig(configPath())
 	if err != nil {
@@ -259,7 +279,8 @@ func runPick() error {
 		return err
 	}
 
-	picker := NewPicker(cfg, st[ws])
+	picker := NewPicker(cfg, st[ws].Tags)
+	picker.SetNote(st[ws].Note)
 	fd := int(os.Stdin.Fd())
 	if term.IsTerminal(fd) {
 		oldState, err := term.MakeRaw(fd)
@@ -273,8 +294,8 @@ func runPick() error {
 		return err
 	}
 
-	st[ws] = picker.SelectedNames()
-	if err := ReportTags(sock, ws, cfg, st[ws], TagColumns(cfg, sidebarWidth(), info.indented())); err != nil {
+	st[ws] = Entry{Tags: picker.SelectedNames(), Note: strings.TrimSpace(picker.Note)}
+	if err := reportEntry(sock, ws, cfg, st[ws], TagColumns(cfg, sidebarWidth(), info.indented())); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(pluginStateDir(), 0o755); err != nil {
@@ -318,7 +339,7 @@ func usage() {
 usage: herdr-tags <command>
   open          open the tag picker popup for the current workspace (action)
   pick          the picker itself; runs inside the popup
-  startup       re-report every stored tag selection (startup hook)
+  startup       re-report every stored tag selection and note (startup hook)
   init-config   write the documented default config.hcl (never overwrites)
   sidebar-rows  print the [ui.sidebar.spaces] snippet for herdr's config.toml`))
 	os.Exit(2)

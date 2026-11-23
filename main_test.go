@@ -11,9 +11,9 @@ import (
 )
 
 func TestPruneStateDropsClosedWorkspaces(t *testing.T) {
-	st := State{"w1": {"wip"}, "w2": {"blocked"}, "w3": {"ready"}}
+	st := State{"w1": {Tags: []string{"wip"}}, "w2": {Tags: []string{"blocked"}}, "w3": {Note: "ready soon"}}
 	pruned := pruneState(st, []string{"w1", "w3", "w9"})
-	want := State{"w1": {"wip"}, "w3": {"ready"}}
+	want := State{"w1": {Tags: []string{"wip"}}, "w3": {Note: "ready soon"}}
 	if !reflect.DeepEqual(pruned, want) {
 		t.Errorf("pruneState = %v, want %v", pruned, want)
 	}
@@ -68,6 +68,22 @@ func TestPopupSizeFitsTheTagList(t *testing.T) {
 	}
 	if w < utf8.RuneCountInString("↑↓ move · space toggle · enter save · esc cancel")+4 {
 		t.Errorf("width %d is narrower than the hint line", w)
+	}
+}
+
+func TestPopupSizeMakesRoomForTheNoteField(t *testing.T) {
+	cfg := threeTags()
+	_, without := popupSize(cfg)
+	cfg.NoteLines = 2
+	w, with := popupSize(cfg)
+	if with != without+noteFieldRows {
+		t.Errorf("height = %d, want %d", with, without+noteFieldRows)
+	}
+	if w < len("> Note: ")+noteFieldWidth+4 {
+		t.Errorf("width %d is narrower than the note field", w)
+	}
+	if w < utf8.RuneCountInString(noteHints)+4 {
+		t.Errorf("width %d is narrower than the note field's hint line", w)
 	}
 }
 

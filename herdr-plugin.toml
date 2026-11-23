@@ -13,7 +13,7 @@ command = ["sh", "scripts/fetch-or-build.sh"]
 platforms = ["linux", "macos"]
 
 # Herdr does not keep workspace tokens across a server restart: re-report
-# every stored selection once the restored session is up.
+# every stored selection and note once the restored session is up.
 [[startup]]
 command = ["./bin/herdr-tags", "startup"]
 

@@ -56,6 +56,36 @@ tag "wip" { color = "#fff" }
 	}
 }
 
+func TestLoadConfigNote(t *testing.T) {
+	cfg, err := LoadConfig(writeConfig(t, `tag "wip" { color = "#fff" }`))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.NoteLines != 2 || cfg.NoteColor != "#9399b2" {
+		t.Errorf("defaults: NoteLines = %d, NoteColor = %q, want 2 and #9399b2", cfg.NoteLines, cfg.NoteColor)
+	}
+
+	cfg, err = LoadConfig(writeConfig(t, `
+note_lines = 4
+note_color = "#abc"
+tag "wip" { color = "#fff" }
+`))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.NoteLines != 4 || cfg.NoteColor != "#abc" {
+		t.Errorf("NoteLines = %d, NoteColor = %q, want 4 and #abc", cfg.NoteLines, cfg.NoteColor)
+	}
+
+	cfg, err = LoadConfig(writeConfig(t, "note_lines = 0\ntag \"wip\" { color = \"#fff\" }"))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.NoteLines != 0 {
+		t.Errorf("NoteLines = %d, want 0 (note turned off)", cfg.NoteLines)
+	}
+}
+
 func TestLoadConfigMissingFileUsesDefaults(t *testing.T) {
 	cfg, err := LoadConfig(filepath.Join(t.TempDir(), "config.hcl"))
 	if err != nil {
@@ -99,6 +129,9 @@ func TestLoadConfigRejectsBadInput(t *testing.T) {
 		"syntax error":   `tag "wip" {`,
 		"zero width":     "narrowest_sidebar_width = 0\ntag \"wip\" { color = \"#fff\" }",
 		"negative width": "narrowest_sidebar_width = -4\ntag \"wip\" { color = \"#fff\" }",
+		"negative lines": "note_lines = -1\ntag \"wip\" { color = \"#fff\" }",
+		"too many lines": "note_lines = 14\ntag \"wip\" { color = \"#fff\" }",
+		"bad note color": "note_color = \"grey\"\ntag \"wip\" { color = \"#fff\" }",
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {

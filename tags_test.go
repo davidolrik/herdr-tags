@@ -42,16 +42,16 @@ func TestPackLines(t *testing.T) {
 func TestPackLinesPutsTheOverflowOnTheLastLine(t *testing.T) {
 	cfg := &Config{}
 	var selected []string
-	for i := 0; i < maxTagLines+3; i++ {
+	for i := 0; i < maxSidebarRows+3; i++ {
 		name := fmt.Sprintf("tag%02d", i)
 		cfg.Tags = append(cfg.Tags, Tag{Name: name, Color: "#fff"})
 		selected = append(selected, name)
 	}
 	lines := PackLines(cfg, selected, 6)
-	if len(lines) != maxTagLines {
-		t.Fatalf("%d lines, want %d", len(lines), maxTagLines)
+	if len(lines) != maxSidebarRows {
+		t.Fatalf("%d lines, want %d", len(lines), maxSidebarRows)
 	}
-	if got := len(lines[maxTagLines-1]); got != 4 {
+	if got := len(lines[maxSidebarRows-1]); got != 4 {
 		t.Errorf("last line holds %d tags, want 4", got)
 	}
 }

@@ -23,6 +23,14 @@
 # are wrapped to fit the narrower of the two:
 #
 # narrowest_sidebar_width = 24
+#
+# A workspace can also carry a free-text note, typed into the field below
+# the tags in the picker and shown below the tags in the sidebar. It wraps
+# onto at most note_lines sidebar lines and anything longer ends in "…";
+# 0 turns the note off. Regenerate the sidebar rows after changing either:
+#
+# note_lines = 2
+# note_color = "#9399b2"
 
 tag "in-review" { color = "#f9e2af" }
 tag "blocked"   { color = "#f38ba8" }
